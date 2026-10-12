@@ -66,3 +66,7 @@ cloudflared.exe
 # Do not publish local key samples
 sample_keys.txt
 
+
+# Project-generated local output
+generated_reports/
+.pytest_cache/
