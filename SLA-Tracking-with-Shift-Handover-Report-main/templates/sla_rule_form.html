@@ -1,0 +1,348 @@
+{% extends "base.html" %}
+
+{% block title %}{{ 'Edit' if rule else 'Create' }} SLA Rule — SLA Tracker{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <div class="dashboard-header">
+    <h3>
+      <i class="bi bi-{% if rule and rule.id is defined %}pencil-square{% else %}plus-circle{% endif %} text-primary"></i>
+      {{ 'Edit' if rule and rule.id is defined else 'Create' }} SLA Rule
+    </h3>
+  </div>
+
+  <form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <!-- Client selection -->
+    <div class="mb-3">
+      <label for="client_id" class="form-label">Client *</label>
+      <select name="client_id" id="client_id" class="form-select" required>
+        <option value="">— Select Client —</option>
+        {% for c in clients %}
+        <option value="{{ c.id }}"
+          {% if rule and rule.client_id == c.id %}selected{% endif %}>
+          {{ c.name }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="mb-3">
+      <label for="rule_name" class="form-label">Rule Name *</label>
+      <input type="text" name="rule_name" id="rule_name" class="form-control"
+             value="{{ rule.rule_name if rule else '' }}" required>
+    </div>
+
+    <!-- Priority -->
+    <div class="mb-3">
+      <label for="priority" class="form-label">Priority (evaluation order)</label>
+      <input type="number" name="priority" id="priority" class="form-control"
+             value="{{ rule.priority if rule and rule.priority is defined else 0 }}" min="0">
+      <div class="form-text">Lower number = evaluated first. First matching rule wins.</div>
+    </div>
+
+    <div class="mb-3">
+      <label for="description" class="form-label">Description / Notes</label>
+      <textarea name="description" id="description" class="form-control" rows="2" placeholder="Describe the purpose of this SLA rule...">{{ rule.description if rule and rule.description else '' }}</textarea>
+    </div>
+
+    <div class="mb-3">
+      <label for="escalation_email" class="form-label">Escalation / Notification Contact (Email)</label>
+      <input type="email" name="escalation_email" id="escalation_email" class="form-control"
+             value="{{ rule.escalation_email if rule and rule.escalation_email else '' }}"
+             placeholder="e.g. ops-team@example.com">
+      <div class="form-text">Optional. The email address notified when SLA warning thresholds or breaches occur.</div>
+    </div>
+
+    <div class="mb-4 card p-3 bg-light border">
+      <h5 class="card-title text-primary mb-3">Matching Conditions</h5>
+      <p class="text-muted small mb-3">
+        This rule will apply if <strong>all</strong> of the matching conditions below are satisfied (AND logic).
+      </p>
+
+      <div id="conditions-container">
+        {% if rule and rule.conditions %}
+          {% for cond in rule.conditions %}
+          <div class="row condition-row align-items-end mb-3">
+            <div class="col-md-5">
+              <label class="form-label small text-muted">Field Name *</label>
+              <select name="cond_field_name[]" class="form-select cond-field-name-select" required>
+                <option value="">-- Select Field --</option>
+                <option value="severity" {% if cond.field_name == 'severity' %}selected{% endif %}>severity</option>
+                <option value="priority" {% if cond.field_name == 'priority' %}selected{% endif %}>priority</option>
+                <option value="criticality" {% if cond.field_name == 'criticality' %}selected{% endif %}>criticality</option>
+                <option value="status" {% if cond.field_name == 'status' %}selected{% endif %}>status</option>
+              </select>
+            </div>
+            <div class="col-md-5">
+              <label class="form-label small text-muted">Field Value *</label>
+              <input type="hidden" name="cond_field_value[]" class="cond-field-value-hidden" value="{{ cond.field_value }}">
+              <select class="form-select cond-field-value-select" required>
+                <option value="">-- Select Value --</option>
+              </select>
+              <input type="text" class="form-control cond-field-value-custom mt-2 d-none" placeholder="Type custom value...">
+            </div>
+            <div class="col-md-2">
+              <button type="button" class="btn btn-outline-danger w-100 remove-condition-btn">
+                <i class="bi bi-trash"></i> Remove
+              </button>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <!-- Default single empty condition row -->
+          <div class="row condition-row align-items-end mb-3">
+            <div class="col-md-5">
+              <label class="form-label small text-muted">Field Name *</label>
+              <select name="cond_field_name[]" class="form-select cond-field-name-select" required>
+                <option value="">-- Select Field --</option>
+                <option value="severity">severity</option>
+                <option value="priority">priority</option>
+                <option value="criticality">criticality</option>
+                <option value="status">status</option>
+              </select>
+            </div>
+            <div class="col-md-5">
+              <label class="form-label small text-muted">Field Value *</label>
+              <input type="hidden" name="cond_field_value[]" class="cond-field-value-hidden">
+              <select class="form-select cond-field-value-select" required disabled>
+                <option value="">-- Select Value --</option>
+              </select>
+              <input type="text" class="form-control cond-field-value-custom mt-2 d-none" placeholder="Type custom value...">
+            </div>
+            <div class="col-md-2">
+              <button type="button" class="btn btn-outline-danger w-100 remove-condition-btn">
+                <i class="bi bi-trash"></i> Remove
+              </button>
+            </div>
+          </div>
+        {% endif %}
+      </div>
+
+      <div>
+        <button type="button" class="btn btn-sm btn-outline-primary" id="add-condition-btn">
+          <i class="bi bi-plus-circle me-1"></i> Add Another Condition
+        </button>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="col-md-6 mb-3">
+        <label for="response_sla_minutes" class="form-label">Response SLA (minutes)</label>
+        <input type="number" name="response_sla_minutes" id="response_sla_minutes" class="form-control"
+               value="{{ rule.response_sla_minutes if rule and rule.response_sla_minutes else '' }}" min="0">
+        <div class="form-text">Optional. Leave empty if not tracking response SLA.</div>
+      </div>
+      <div class="col-md-6 mb-3">
+        <label for="resolution_sla_minutes" class="form-label">Resolution SLA (minutes) *</label>
+        <input type="number" name="resolution_sla_minutes" id="resolution_sla_minutes" class="form-control"
+               value="{{ rule.resolution_sla_minutes if rule else '' }}" required min="1">
+      </div>
+    </div>
+
+    <div class="mb-3">
+      <label for="warning_threshold_percent" class="form-label">Warning Threshold (%)</label>
+      <input type="number" name="warning_threshold_percent" id="warning_threshold_percent" class="form-control"
+             value="{{ rule.warning_threshold_percent if rule else 80 }}" min="0" max="100">
+      <div class="form-text">SLA status becomes "Near Breach" when this percentage of the window is consumed.</div>
+    </div>
+
+    <!-- Business Hours -->
+    <div class="mb-3 form-check">
+      <input type="checkbox" name="business_hours_only" id="business_hours_only" class="form-check-input"
+             {% if rule and rule.business_hours_only %}checked{% endif %}>
+      <label for="business_hours_only" class="form-check-label">Business Hours Only</label>
+      <div class="form-text">When checked, SLA deadlines only count Mon–Fri 09:00–17:00 in the client's timezone.</div>
+    </div>
+
+    <div class="mb-3">
+      <label for="applies_to_status" class="form-label">Applies To Status</label>
+      <input type="text" name="applies_to_status" id="applies_to_status" class="form-control"
+             value="{{ rule.applies_to_status if rule and rule.applies_to_status else '' }}"
+             placeholder="e.g. open,in_progress (leave empty for all)">
+    </div>
+
+    <div class="mb-3">
+      <label for="stop_status" class="form-label">Stop/Closed Status</label>
+      <input type="text" name="stop_status" id="stop_status" class="form-control"
+             value="{{ rule.stop_status if rule and rule.stop_status else '' }}"
+             placeholder="e.g. closed,resolved,cancelled">
+      <div class="form-text">Comma-separated statuses that stop the SLA clock.</div>
+    </div>
+
+    <!-- Pause Status -->
+    <div class="mb-3">
+      <label for="pause_status" class="form-label">Pause Status</label>
+      <input type="text" name="pause_status" id="pause_status" class="form-control"
+             value="{{ rule.pause_status if rule and rule.pause_status else '' }}"
+             placeholder="e.g. awaiting_client,on_hold">
+      <div class="form-text">Comma-separated statuses that pause the SLA clock. The deadline shifts forward by the paused duration.</div>
+    </div>
+
+    <div class="mb-3 form-check">
+      <input type="checkbox" name="is_active" id="is_active" class="form-check-input"
+             {% if not rule or (rule and rule.is_active) %}checked{% endif %}>
+      <label for="is_active" class="form-check-label">Active</label>
+    </div>
+
+    <div class="d-flex gap-2">
+      <button type="submit" class="btn btn-primary">
+        <i class="bi bi-check-lg me-1"></i>{{ 'Update' if rule and rule.id is defined else 'Create' }} Rule
+      </button>
+      <a href="{{ url_for('sla_rules.rule_list') }}" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+
+<!-- Datalist inputs are no longer needed as we use custom dropdown selects -->
+
+<script>
+const fieldOptions = {{ field_options | tojson if field_options else '{}' }};
+
+function initConditionRow(row) {
+    const fieldNameSelect = row.querySelector(".cond-field-name-select");
+    const fieldValueSelect = row.querySelector(".cond-field-value-select");
+    const fieldValueHidden = row.querySelector(".cond-field-value-hidden");
+    const fieldValueCustom = row.querySelector(".cond-field-value-custom");
+
+    function updateValueOptions() {
+        const fieldName = fieldNameSelect.value;
+        const currentVal = fieldValueHidden.value;
+
+        // Clear existing options
+        fieldValueSelect.innerHTML = '<option value="">-- Select Value --</option>';
+
+        if (!fieldName) {
+            fieldValueSelect.disabled = true;
+            fieldValueCustom.classList.add("d-none");
+            return;
+        }
+        fieldValueSelect.disabled = false;
+
+        const options = fieldOptions[fieldName] || [];
+        let valFound = false;
+
+        const cleanKey = s => s ? s.toLowerCase().replace(/[-_:]/g, " ").replace(/\s+/g, " ").trim() : "";
+
+        options.forEach(opt => {
+            const option = document.createElement("option");
+            option.value = opt;
+            option.textContent = opt;
+            
+            const normOpt = cleanKey(opt);
+            const normCurr = cleanKey(currentVal);
+
+            const isMatch = currentVal && (
+                opt === currentVal ||
+                normOpt === normCurr ||
+                (normCurr && normOpt && (normOpt.includes(normCurr) || normCurr.includes(normOpt)))
+            );
+
+            if (isMatch && !valFound) {
+                option.selected = true;
+                fieldValueHidden.value = opt;
+                valFound = true;
+            }
+            fieldValueSelect.appendChild(option);
+        });
+
+        // Add custom option
+        const customOpt = document.createElement("option");
+        customOpt.value = "__custom__";
+        customOpt.textContent = "-- Other (Type custom value) --";
+        if (currentVal && !valFound) {
+            customOpt.selected = true;
+            fieldValueCustom.classList.remove("d-none");
+            fieldValueCustom.value = currentVal;
+            fieldValueCustom.required = true;
+        } else {
+            fieldValueCustom.classList.add("d-none");
+            fieldValueCustom.required = false;
+        }
+        fieldValueSelect.appendChild(customOpt);
+    }
+
+    fieldNameSelect.addEventListener("change", function() {
+        fieldValueHidden.value = "";
+        fieldValueCustom.value = "";
+        updateValueOptions();
+    });
+
+    fieldValueSelect.addEventListener("change", function() {
+        const val = fieldValueSelect.value;
+        if (val === "__custom__") {
+            fieldValueCustom.classList.remove("d-none");
+            fieldValueCustom.required = true;
+            fieldValueHidden.value = fieldValueCustom.value;
+            fieldValueCustom.focus();
+        } else {
+            fieldValueCustom.classList.add("d-none");
+            fieldValueCustom.required = false;
+            fieldValueHidden.value = val;
+        }
+    });
+
+    fieldValueCustom.addEventListener("input", function() {
+        fieldValueHidden.value = fieldValueCustom.value;
+    });
+
+    // Run initial population
+    updateValueOptions();
+}
+
+document.addEventListener("DOMContentLoaded", function() {
+    const container = document.getElementById("conditions-container");
+    const addBtn = document.getElementById("add-condition-btn");
+
+    // Initialize existing rows
+    container.querySelectorAll(".condition-row").forEach(initConditionRow);
+
+    // Add condition row
+    addBtn.addEventListener("click", function() {
+        const row = document.createElement("div");
+        row.className = "row condition-row align-items-end mb-3";
+        row.innerHTML = `
+            <div class="col-md-5">
+              <label class="form-label small text-muted">Field Name *</label>
+              <select name="cond_field_name[]" class="form-select cond-field-name-select" required>
+                <option value="">-- Select Field --</option>
+                <option value="severity">severity</option>
+                <option value="priority">priority</option>
+                <option value="criticality">criticality</option>
+                <option value="status">status</option>
+              </select>
+            </div>
+            <div class="col-md-5">
+              <label class="form-label small text-muted">Field Value *</label>
+              <input type="hidden" name="cond_field_value[]" class="cond-field-value-hidden">
+              <select class="form-select cond-field-value-select" required disabled>
+                <option value="">-- Select Value --</option>
+              </select>
+              <input type="text" class="form-control cond-field-value-custom mt-2 d-none" placeholder="Type custom value...">
+            </div>
+            <div class="col-md-2">
+              <button type="button" class="btn btn-outline-danger w-100 remove-condition-btn">
+                <i class="bi bi-trash"></i> Remove
+              </button>
+            </div>
+        `;
+        container.appendChild(row);
+        initConditionRow(row);
+    });
+
+    // Remove condition row (event delegation)
+    container.addEventListener("click", function(e) {
+        if (e.target.classList.contains("remove-condition-btn") || e.target.closest(".remove-condition-btn")) {
+            const rows = container.querySelectorAll(".condition-row");
+            if (rows.length > 1) {
+                const row = e.target.closest(".condition-row");
+                row.remove();
+            } else {
+                alert("At least one condition row is required.");
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

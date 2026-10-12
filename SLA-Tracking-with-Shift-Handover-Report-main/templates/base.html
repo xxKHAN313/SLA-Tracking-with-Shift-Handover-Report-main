@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}SLA Tracker{% endblock %} - Automated SLA Tracking System</title>
+
+    <!-- Bootstrap 5.3 + Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+
+    <!-- Corporate SLM Theme -->
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body>
+{% if current_user.is_authenticated %}
+<nav class="navbar navbar-expand-lg sticky-top">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="{{ url_for('dashboard.index') }}">
+            <img src="{{ url_for('static', filename='images/image.png') }}" alt="Cydea Tech Logo" style="height: 34px; max-width: 130px; object-fit: contain;" class="me-2">
+            <span style="font-weight: 800; letter-spacing: -0.01em;">Cydea Tech</span>
+            <span style="font-size: 0.85em; opacity: 0.85; font-weight: 500;" class="ms-1">SLA Tracking</span>
+        </a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMenu">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navMenu">
+            <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                <li class="nav-item">
+                    <a class="nav-link {% if request.endpoint == 'dashboard.index' %}active{% endif %}"
+                       href="{{ url_for('dashboard.index') }}">
+                       <i class="bi bi-grid-1x2-fill me-1"></i>Dashboard</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if request.endpoint and 'tickets.' in request.endpoint %}active{% endif %}"
+                       href="{{ url_for('tickets.ticket_list') }}">
+                       <i class="bi bi-ticket-detailed me-1"></i>Tickets</a>
+                </li>
+                {% if current_user.has_permission('manage_sla_rules') %}
+                <li class="nav-item">
+                    <a class="nav-link {% if request.endpoint and 'sla_rules.' in request.endpoint %}active{% endif %}"
+                       href="{{ url_for('sla_rules.rule_list') }}">
+                       <i class="bi bi-clock-history me-1"></i>SLA Rules</a>
+                </li>
+                {% endif %}
+                {% if current_user.has_permission('view_reports') %}
+                <li class="nav-item">
+                    <a class="nav-link {% if request.endpoint and 'reports.' in request.endpoint %}active{% endif %}"
+                       href="{{ url_for('reports.report_list') }}">
+                       <i class="bi bi-file-earmark-bar-graph me-1"></i>Reports</a>
+                </li>
+                {% endif %}
+                {% if current_user.has_permission('manage_iris_settings') %}
+                <li class="nav-item">
+                    <a class="nav-link {% if request.endpoint and 'settings.' in request.endpoint %}active{% endif %}"
+                       href="{{ url_for('settings.settings_page') }}">
+                       <i class="bi bi-gear-fill me-1"></i>Settings</a>
+                </li>
+                {% endif %}
+            </ul>
+            <div class="d-flex align-items-center gap-3">
+                <!-- Real-Time SLA Notifications Bell Dropdown -->
+                <div class="dropdown me-1">
+                    <button class="btn btn-link text-white position-relative p-1 text-decoration-none" type="button" id="notifBellDropdown" data-bs-toggle="dropdown" aria-expanded="false" title="SLA Alerts &amp; Notifications">
+                        <i class="bi bi-bell-fill fs-5"></i>
+                        {% if unread_notification_count > 0 %}
+                        <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger border border-light" style="font-size:0.6rem;">
+                            {{ unread_notification_count }}
+                        </span>
+                        {% endif %}
+                    </button>
+                    <div class="dropdown-menu dropdown-menu-end p-0 shadow-lg border-0" style="width: 350px; max-height: 420px; overflow-y: auto;" aria-labelledby="notifBellDropdown">
+                        <div class="p-3 bg-light border-bottom d-flex justify-content-between align-items-center">
+                            <h6 class="mb-0 fw-bold"><i class="bi bi-bell text-primary me-2"></i>SLA Alerts &amp; Notifications</h6>
+                            <span class="badge bg-{{ 'danger' if unread_notification_count > 0 else 'secondary' }} rounded-pill">{{ unread_notification_count }} Alert(s)</span>
+                        </div>
+                        <div class="list-group list-group-flush">
+                            {% for notif in notifications %}
+                            <a href="{{ notif.link }}" class="list-group-item list-group-item-action p-3 border-bottom">
+                                <div class="d-flex align-items-start">
+                                    <div class="me-2 fs-5 text-{{ notif.badge_color }}">
+                                        <i class="bi {{ notif.icon }}"></i>
+                                    </div>
+                                    <div class="flex-grow-1">
+                                        <div class="d-flex justify-content-between align-items-center mb-1">
+                                            <strong class="small text-dark">{{ notif.title }}</strong>
+                                            <span class="badge bg-{{ notif.badge_color }}" style="font-size:0.65rem;">{{ notif.time_str }}</span>
+                                        </div>
+                                        <p class="mb-0 text-muted" style="font-size:0.75rem;">{{ notif.message }}</p>
+                                    </div>
+                                </div>
+                            </a>
+                            {% else %}
+                            <div class="p-4 text-center text-muted small">
+                                <i class="bi bi-check-circle fs-3 text-success d-block mb-2"></i>
+                                All SLAs compliant! No active breach alerts.
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+
+                <span class="status-live"><span class="pulse-dot"></span> Active</span>
+                <span class="navbar-text">
+                    <span class="badge bg-secondary">{{ current_user.role }}</span>
+                    {{ current_user.username }}
+                </span>
+                <a href="{{ url_for('auth.logout') }}" class="btn btn-outline-light btn-sm">
+                    <i class="bi bi-box-arrow-right"></i> Logout
+                </a>
+            </div>
+        </div>
+    </div>
+</nav>
+{% endif %}
+
+<div class="container-fluid py-4 px-4">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

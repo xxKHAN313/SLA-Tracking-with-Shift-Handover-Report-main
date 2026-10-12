@@ -1,0 +1,68 @@
+# Python virtual environments
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+
+# Node.js
+node_modules/
+dist/
+build/
+
+# Sensitive configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# GitHub authentication
+.gh/
+
+# Generated build files
+cmake-build-debug/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+*.obj
+*.o
+*.exe
+*.dll
+a.out
+
+# Local user and booking data
+bookings.txt
+Login_emp.txt
+login_std.txt
+orders.txt
+cart.txt
+complains.txt
+notifications.txt
+stocks.dat
+
+# Local logs and databases
+*.log
+*.db
+*.sqlite
+*.sqlite3
+
+# Downloaded utilities
+cloudflared.exe
+
+# Do not publish local key samples
+sample_keys.txt
+

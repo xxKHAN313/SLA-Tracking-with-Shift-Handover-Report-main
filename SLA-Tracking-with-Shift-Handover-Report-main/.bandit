@@ -1,0 +1,17 @@
+# Bandit YAML configuration file
+targets:
+  - "app.py"
+  - "cli.py"
+  - "config.py"
+  - "extensions.py"
+  - "models"
+  - "routes"
+  - "services"
+  - "scripts"
+
+exclude_dirs:
+  - "tests"
+  - ".pytest_cache"
+  - ".git"
+  - "venv"
+  - ".venv"

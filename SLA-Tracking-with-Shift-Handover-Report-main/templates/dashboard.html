@@ -1,0 +1,536 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<!-- ===== DASHBOARD HEADER ===== -->
+<div class="dashboard-header">
+    <h3><i class="bi bi-grid-1x2-fill me-2"></i>Service Level Management Overview Dashboard</h3>
+    <div class="d-flex gap-2 align-items-center">
+        <form method="GET" class="d-flex gap-2 align-items-center">
+            {% if selected_month %}
+            <input type="hidden" name="month" value="{{ selected_month }}">
+            {% endif %}
+            <select name="client_id" class="form-select form-select-sm" style="width:auto;" onchange="this.form.submit()">
+                <option value="">All Clients</option>
+                {% for c in clients %}
+                <option value="{{ c.id }}" {% if selected_client_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+                {% endfor %}
+            </select>
+        </form>
+        <a href="{{ url_for('dashboard.client_breakdown') }}" class="btn btn-outline-info btn-sm">
+            <i class="bi bi-building"></i> Client Breakdown (100+)
+        </a>
+        <form method="POST" action="{{ url_for('tickets.trigger_recalculate') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-outline-primary btn-sm" type="submit">
+                <i class="bi bi-arrow-repeat"></i> Recalculate
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- ===== MONTH TABS ===== -->
+{% if metrics.available_months %}
+<div class="month-tabs">
+    <a class="month-tab {% if not selected_month %}active{% endif %}"
+       href="{{ url_for('dashboard.index', client_id=selected_client_id or '') }}">All</a>
+    {% for m in metrics.available_months[:12] %}
+    <a class="month-tab {% if selected_month == m %}active{% endif %}"
+       href="{{ url_for('dashboard.index', month=m, client_id=selected_client_id or '') }}">
+        {{ m }}
+    </a>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- ===== KPI HEADER BAR ===== -->
+<div class="kpi-bar">
+    <div class="kpi-item">
+        <div class="kpi-value">{{ metrics.sla_compliance_percent }}%</div>
+        <div class="kpi-label">SLA Compliance</div>
+    </div>
+    <div class="kpi-item">
+        <div class="kpi-value">{{ metrics.ytd_compliance_percent }}%</div>
+        <div class="kpi-label">Year to Date SLA</div>
+    </div>
+    <div class="kpi-item">
+        <div class="kpi-value">{{ metrics.total_tickets }}</div>
+        <div class="kpi-label">Received Cases Total</div>
+    </div>
+    <div class="kpi-item">
+        <div class="kpi-value">{{ metrics.open_tickets }}</div>
+        <div class="kpi-label">Open Tickets</div>
+    </div>
+    <div class="kpi-item">
+        <div class="kpi-value">{{ metrics.breached }}</div>
+        <div class="kpi-label">Breached</div>
+    </div>
+    <div class="kpi-item">
+        <div class="kpi-value">{{ metrics.avg_resolution_minutes }}<small style="font-size:0.5em;"> min</small></div>
+        <div class="kpi-label">Avg Resolution Time</div>
+    </div>
+</div>
+
+<!-- ===== 3-COLUMN DASHBOARD GRID ===== -->
+<div class="dashboard-grid">
+
+    <!-- ────────── LEFT PANEL ────────── -->
+    <div class="dashboard-panel">
+        <!-- Comment Box -->
+        <div class="comment-box">
+            <strong><i class="bi bi-chat-left-text me-1"></i> Comment</strong>
+            All pending cases should be resolved within SLA targets this period.
+        </div>
+
+        <!-- SLA Compliance Panel -->
+        <div class="sla-panel">
+            <div class="d-flex justify-content-between align-items-start mb-3">
+                <div>
+                    <div class="sla-big-pct {% if metrics.sla_compliance_percent >= 90 %}green{% elif metrics.sla_compliance_percent >= 70 %}amber{% else %}red{% endif %}">
+                        {{ metrics.sla_compliance_percent }}%
+                    </div>
+                    <div class="sla-sub-label">SLA Compliance Rate</div>
+                </div>
+                <div class="text-end">
+                    <div class="sla-big-pct" style="font-size:1.8rem;">{{ metrics.within_sla }}</div>
+                    <div class="sla-sub-label">Within SLA</div>
+                </div>
+            </div>
+
+            <div class="sla-stat-row">
+                <span class="sla-stat-value text-success">{{ metrics.within_sla }}</span>
+                <span class="sla-stat-label">Within SLA</span>
+            </div>
+            <div class="sla-stat-row">
+                <span class="sla-stat-value text-warning">{{ metrics.near_breach }}</span>
+                <span class="sla-stat-label">Near Breach</span>
+            </div>
+            <div class="sla-stat-row">
+                <span class="sla-stat-value text-danger">{{ metrics.breached }}</span>
+                <span class="sla-stat-label">Breached</span>
+            </div>
+            <div class="sla-stat-row">
+                <span class="sla-stat-value text-muted">{{ metrics.no_matching_rule }}</span>
+                <span class="sla-stat-label">No Matching Rule</span>
+            </div>
+        </div>
+
+        <!-- Received Cases Area Chart -->
+        <div class="card p-3 mb-3">
+            <h6><i class="bi bi-graph-up me-1"></i> Received Cases</h6>
+            <canvas id="receivedChart" height="160"></canvas>
+        </div>
+
+        <!-- Monthly SLA Trend -->
+        <div class="card p-3 shadow-sm border-0 mb-3">
+            <h6 class="fw-bold mb-2"><i class="bi bi-graph-up-arrow text-primary me-2"></i>Monthly SLA Trend</h6>
+            <canvas id="trendChart" height="160"></canvas>
+        </div>
+    </div>
+
+    <!-- ────────── CENTER PANEL ────────── -->
+    <div class="dashboard-panel">
+        <!-- Donut: Open vs Closed -->
+        <div class="card p-3">
+            <h6><i class="bi bi-pie-chart-fill me-1"></i> Current Cases Status</h6>
+            <div class="row align-items-center">
+                <div class="col-5 text-center">
+                    <div style="font-size:1.8rem; font-weight:800; color: var(--blue-800);">{{ metrics.closed_tickets }}</div>
+                    <div style="font-size:0.72rem; color: var(--text-medium); font-weight:600;">{{ ((metrics.closed_tickets / metrics.total_tickets * 100) | round(0) | int) if metrics.total_tickets else 0 }}% Resolved</div>
+                </div>
+                <div class="col-3">
+                    <canvas id="statusDonut" height="130"></canvas>
+                </div>
+                <div class="col-4 text-center">
+                    <div style="font-size:1.8rem; font-weight:800; color: var(--amber);">{{ metrics.open_tickets }}</div>
+                    <div style="font-size:0.72rem; color: var(--text-medium); font-weight:600;">{{ ((metrics.open_tickets / metrics.total_tickets * 100) | round(0) | int) if metrics.total_tickets else 0 }}% Pending</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bar: Severity/Priority Distribution -->
+        <div class="card p-3">
+            <h6><i class="bi bi-bar-chart-fill me-1"></i> Severity / Priority / Criticality</h6>
+            <canvas id="taxonomyChart" height="160"></canvas>
+        </div>
+
+        <!-- SLA Breach Root Cause Analysis -->
+        <div class="card p-3 shadow-sm border-0">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="fw-bold mb-0"><i class="bi bi-pie-chart-fill text-danger me-2"></i>SLA Breach Root Cause Analysis</h6>
+                <small class="text-muted" style="font-size:0.72rem;">Breach Categorization</small>
+            </div>
+            <div style="height: 185px; position: relative;">
+                <canvas id="breachReasonChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Scrollable Recent Activity Timeline -->
+        <div class="card p-3 shadow-sm border-0 mt-3">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="fw-bold mb-0"><i class="bi bi-clock-history text-primary me-2"></i>Recent Activity Timeline</h6>
+                <span class="badge bg-light text-dark" style="font-size:0.68rem;">Live Updates</span>
+            </div>
+            <div class="activity-timeline" style="max-height: 220px; overflow-y: auto; padding-right: 6px;">
+                {% for act in recent_activity %}
+                <div class="d-flex align-items-start mb-2 pb-2 border-bottom">
+                    <div class="me-2 fs-6">
+                        <i class="bi {{ act.icon }}"></i>
+                    </div>
+                    <div class="flex-grow-1">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <a href="{{ act.link }}" class="fw-semibold text-decoration-none text-dark small" style="font-size:0.82rem;">{{ act.title }}</a>
+                            <span class="badge bg-light text-muted ms-2" style="font-size:0.65rem;">{{ act.category }}</span>
+                        </div>
+                        <small class="text-muted d-block" style="font-size:0.7rem;">
+                            {{ act.timestamp.strftime('%Y-%m-%d %H:%M:%S') if act.timestamp else 'Recently' }}
+                        </small>
+                    </div>
+                </div>
+                {% else %}
+                <p class="text-muted small mb-0 py-2">No recent system activity logged.</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- ────────── RIGHT PANEL ────────── -->
+    <div class="dashboard-panel">
+        <!-- Top Issues Table -->
+        <div class="card p-3">
+            <h6><i class="bi bi-exclamation-triangle-fill me-1"></i> Top Issues</h6>
+            <div class="table-responsive">
+                <table class="table table-sm top-issues-table mb-0">
+                    <thead>
+                        <tr>
+                            <th style="width:38%;">Category</th>
+                            <th class="text-end" style="width:18%;">Count</th>
+                            <th class="text-end" style="width:22%;">Breached</th>
+                            <th class="text-end" style="width:22%;">Compl.</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for issue in metrics.top_issues %}
+                        <tr>
+                            <td class="text-break">{{ issue.label }}</td>
+                            <td class="text-end fw-bold">{{ issue.count }}</td>
+                            <td class="text-end">
+                                {% if issue.breached > 0 %}
+                                <span class="trend-up"><i class="bi bi-arrow-up-short"></i> {{ issue.breached }}</span>
+                                {% else %}
+                                <span class="trend-down"><i class="bi bi-arrow-down-short"></i> 0</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                <span class="{% if issue.compliance >= 90 %}compliance-high{% elif issue.compliance >= 70 %}compliance-medium{% else %}compliance-low{% endif %}">
+                                    {{ issue.compliance }}%
+                                </span>
+                            </td>
+                        </tr>
+                    {% else %}
+                        <tr><td colspan="4" class="text-center text-muted py-3">No data available</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Regions Map (Pakistan) -->
+        <div class="card p-3">
+            <h6><i class="bi bi-geo-alt-fill me-1"></i> Pakistan Customer Map</h6>
+            <div id="pakistanMap" style="height: 230px; width: 100%; border-radius: 6px; border: 1px solid var(--border-light); background: #e8ecf1; z-index:1;"></div>
+            <div class="mt-2 d-flex flex-wrap gap-1" style="font-size: 0.76rem;">
+                {% for city_name, data in metrics.region_stats.items() %}
+                <div class="d-flex align-items-center gap-1 border rounded px-2 py-1 bg-light">
+                    <strong>{{ city_name }}:</strong>
+                    <span class="badge bg-primary rounded-pill">{{ data.client_count }} Client(s)</span>
+                    <span class="text-muted">({{ data.total }} Cases)</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Analyst Performance -->
+        <div class="card p-3">
+            <h6><i class="bi bi-people-fill me-1"></i> Analyst Performance</h6>
+            <div class="table-responsive">
+                <table class="table table-sm analyst-table mb-0">
+                    <thead>
+                        <tr>
+                            <th style="width:38%;">Analyst</th>
+                            <th class="text-end" style="width:18%;">Total</th>
+                            <th class="text-end" style="width:22%;">Breached</th>
+                            <th class="text-end" style="width:22%;">SLA %</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for analyst, stats in metrics.analyst_stats.items() %}
+                        <tr>
+                            <td class="text-break"><i class="bi bi-person-circle me-1 text-primary"></i>{{ analyst }}</td>
+                            <td class="text-end">{{ stats.total }}</td>
+                            <td class="text-end">
+                                {% if stats.breached > 0 %}<span class="text-danger">{{ stats.breached }}</span>{% else %}0{% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% set comp = ((stats.total - stats.breached) / stats.total * 100) | round(1) if stats.total else 0 %}
+                                <span class="{% if comp >= 90 %}compliance-high{% elif comp >= 70 %}compliance-medium{% else %}compliance-low{% endif %}">{{ comp }}%</span>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* ============================================================
+   Corporate Blue Theme — Chart.js Global Defaults
+   ============================================================ */
+Chart.defaults.color = '#5a6a7e';
+Chart.defaults.borderColor = '#e8ecf1';
+Chart.defaults.font.family = "'Inter', -apple-system, sans-serif";
+Chart.defaults.font.weight = 500;
+
+const metrics = {{ metrics | tojson }};
+
+/* — Donut: Open vs Closed — */
+new Chart(document.getElementById('statusDonut'), {
+    type: 'doughnut',
+    data: {
+        labels: ['Resolved', 'Pending'],
+        datasets: [{
+            data: [metrics.closed_tickets, metrics.open_tickets],
+            backgroundColor: ['#1a2980', '#f39c12'],
+            borderColor: '#ffffff',
+            borderWidth: 3
+        }]
+    },
+    options: {
+        responsive: true,
+        cutout: '60%',
+        plugins: {
+            legend: { display: false },
+            tooltip: {
+                backgroundColor: '#ffffff',
+                titleColor: '#1a2980',
+                bodyColor: '#2c3e50',
+                borderColor: '#d5dde8',
+                borderWidth: 1,
+                cornerRadius: 8
+            }
+        }
+    }
+});
+
+/* — Bar: Taxonomy Distribution — */
+new Chart(document.getElementById('taxonomyChart'), {
+    type: 'bar',
+    data: {
+        labels: Object.keys(metrics.taxonomy_distribution),
+        datasets: [{
+            label: 'Ticket Count',
+            data: Object.values(metrics.taxonomy_distribution),
+            backgroundColor: ['#1a2980', '#26418f', '#3b6eb5', '#5a8fd4', '#7babd6', '#a0c4e8'],
+            borderRadius: 4,
+            barThickness: 28
+        }]
+    },
+    options: {
+        responsive: true,
+        indexAxis: 'y',
+        plugins: {
+            legend: { display: false },
+            tooltip: {
+                backgroundColor: '#ffffff',
+                titleColor: '#1a2980',
+                bodyColor: '#2c3e50',
+                borderColor: '#d5dde8',
+                borderWidth: 1,
+                cornerRadius: 8
+            }
+        },
+        scales: {
+            x: { grid: { color: '#e8ecf1' }, ticks: { color: '#5a6a7e' } },
+            y: { grid: { display: false }, ticks: { color: '#2c3e50', font: { weight: 600 } } }
+        }
+    }
+});
+
+/* — Doughnut: SLA Breach Root Cause Analysis — */
+const breachData = metrics.breach_reason_distribution || {};
+const breachLabels = Object.keys(breachData);
+const breachCounts = Object.values(breachData);
+
+new Chart(document.getElementById('breachReasonChart'), {
+    type: 'doughnut',
+    data: {
+        labels: breachLabels.length ? breachLabels : ['No Breaches Logged'],
+        datasets: [{
+            data: breachCounts.length ? breachCounts : [1],
+            backgroundColor: breachLabels.length ? [
+                '#dc3545', '#fd7e14', '#ffc107', '#6f42c1', '#0d6efd', '#20c997', '#6c757d'
+            ] : ['#e9ecef'],
+            borderColor: '#ffffff',
+            borderWidth: 2
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '55%',
+        plugins: {
+            legend: {
+                position: 'right',
+                labels: { font: { size: 11 }, boxWidth: 12 }
+            },
+            tooltip: {
+                backgroundColor: '#ffffff',
+                titleColor: '#1a2980',
+                bodyColor: '#2c3e50',
+                borderColor: '#d5dde8',
+                borderWidth: 1,
+                cornerRadius: 8
+            }
+        }
+    }
+});
+
+/* — Area: Received Cases Trend — */
+new Chart(document.getElementById('receivedChart'), {
+    type: 'line',
+    data: {
+        labels: metrics.monthly_trend.labels,
+        datasets: [{
+            label: 'Received Cases',
+            data: metrics.monthly_trend.within.map((w, i) => w + (metrics.monthly_trend.breached[i] || 0)),
+            borderColor: '#1a2980',
+            backgroundColor: 'rgba(26, 41, 128, 0.08)',
+            fill: true,
+            tension: 0.4,
+            pointBackgroundColor: '#1a2980',
+            pointBorderColor: '#ffffff',
+            pointBorderWidth: 2,
+            pointRadius: 3
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: { display: false },
+            tooltip: {
+                backgroundColor: '#ffffff',
+                titleColor: '#1a2980',
+                bodyColor: '#2c3e50',
+                borderColor: '#d5dde8',
+                borderWidth: 1,
+                cornerRadius: 8
+            }
+        },
+        scales: {
+            x: { grid: { display: false }, ticks: { color: '#5a6a7e', font: { size: 10 } } },
+            y: { grid: { color: '#e8ecf1' }, ticks: { color: '#5a6a7e' }, beginAtZero: true }
+        }
+    }
+});
+
+/* — Line: Monthly SLA Trend — */
+new Chart(document.getElementById('trendChart'), {
+    type: 'line',
+    data: {
+        labels: metrics.monthly_trend.labels,
+        datasets: [
+            {
+                label: 'Within SLA',
+                data: metrics.monthly_trend.within,
+                borderColor: '#27ae60',
+                backgroundColor: 'rgba(39, 174, 96, 0.06)',
+                fill: true,
+                tension: 0.3,
+                pointBackgroundColor: '#27ae60',
+                pointBorderColor: '#ffffff',
+                pointBorderWidth: 2,
+                pointRadius: 4
+            },
+            {
+                label: 'Breached',
+                data: metrics.monthly_trend.breached,
+                borderColor: '#e74c3c',
+                backgroundColor: 'rgba(231, 76, 60, 0.06)',
+                fill: true,
+                tension: 0.3,
+                pointBackgroundColor: '#e74c3c',
+                pointBorderColor: '#ffffff',
+                pointBorderWidth: 2,
+                pointRadius: 4
+            }
+        ]
+    },
+    options: {
+        responsive: true,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+            legend: {
+                position: 'bottom',
+                labels: { padding: 16, usePointStyle: true, pointStyleWidth: 10, color: '#2c3e50' }
+            },
+            tooltip: {
+                backgroundColor: '#ffffff',
+                titleColor: '#1a2980',
+                bodyColor: '#2c3e50',
+                borderColor: '#d5dde8',
+                borderWidth: 1,
+                cornerRadius: 8
+            }
+        },
+        scales: {
+            x: { grid: { color: '#e8ecf1' }, ticks: { color: '#5a6a7e' } },
+            y: { grid: { color: '#e8ecf1' }, ticks: { color: '#5a6a7e' }, beginAtZero: true }
+        }
+    }
+});
+
+/* — Leaflet: Pakistan Customer Map — */
+try {
+    const pmap = L.map('pakistanMap').setView([30.3753, 69.3451], 5);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 18,
+        attribution: '&copy; OpenStreetMap'
+    }).addTo(pmap);
+
+    const regionStats = metrics.region_stats || {};
+    const markerGroup = L.featureGroup();
+
+    Object.keys(regionStats).forEach(city => {
+        const stat = regionStats[city];
+        if (stat.lat && stat.lng && (stat.client_count > 0 || stat.total > 0)) {
+            const marker = L.circleMarker([stat.lat, stat.lng], {
+                color: '#c0392b',
+                fillColor: '#e74c3c',
+                fillOpacity: 0.85,
+                radius: Math.max(10, Math.min(22, 10 + (stat.client_count * 3)))
+            }).addTo(pmap);
+
+            marker.bindPopup(`
+                <div style="font-family: sans-serif; font-size: 12px; padding: 2px;">
+                    <strong style="color:#c0392b; font-size:13px;"><i class="bi bi-geo-alt-fill"></i> ${city}</strong><br>
+                    Clients in City: <b style="color:#c0392b;">${stat.client_count}</b><br>
+                    Total Cases: <b>${stat.total}</b>
+                </div>
+            `);
+
+            markerGroup.addLayer(marker);
+        }
+    });
+
+    if (markerGroup.getLayers().length > 0) {
+        pmap.fitBounds(markerGroup.getBounds().pad(0.35));
+    }
+} catch(e) {
+    console.error("Leaflet map initialization failed:", e);
+}
+</script>
+{% endblock %}

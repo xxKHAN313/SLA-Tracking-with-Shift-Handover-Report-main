@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}Audit Logs{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h3 class="fw-bold mb-1"><i class="bi bi-journal-text me-2"></i>Administrative Audit Logs</h3>
+            <p class="text-muted mb-0">Record of administrative actions, SLA configuration changes, and system events.</p>
+        </div>
+        <a href="{{ url_for('settings.settings_page') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left me-1"></i> Back to Settings
+        </a>
+    </div>
+
+    <div class="card shadow-sm border-0">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Timestamp (UTC)</th>
+                            <th>User</th>
+                            <th>Action</th>
+                            <th>Target</th>
+                            <th>Details</th>
+                            <th>IP Address</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for log in logs %}
+                        <tr>
+                            <td class="text-nowrap small text-muted">
+                                {{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') if log.created_at else '-' }}
+                            </td>
+                            <td>
+                                <span class="badge bg-primary text-wrap">{{ log.username }}</span>
+                            </td>
+                            <td>
+                                <code class="text-dark">{{ log.action }}</code>
+                            </td>
+                            <td>
+                                <span class="badge bg-secondary">{{ log.target_type }} {% if log.target_id %}#{{ log.target_id }}{% endif %}</span>
+                            </td>
+                            <td class="small">{{ log.details or '-' }}</td>
+                            <td class="small text-muted">{{ log.ip_address or '-' }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="6" class="text-center py-4 text-muted">No audit log entries found.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% if pagination and pagination.pages > 1 %}
+        <div class="card-footer bg-white border-0 py-3">
+            <nav>
+                <ul class="pagination justify-content-center mb-0">
+                    {% if pagination.has_prev %}
+                    <li class="page-item"><a class="page-link" href="{{ url_for('settings.audit_log_list', page=pagination.prev_num) }}">Previous</a></li>
+                    {% endif %}
+                    <li class="page-item disabled"><span class="page-link">Page {{ pagination.page }} of {{ pagination.pages }}</span></li>
+                    {% if pagination.has_next %}
+                    <li class="page-item"><a class="page-link" href="{{ url_for('settings.audit_log_list', page=pagination.next_num) }}">Next</a></li>
+                    {% endif %}
+                </ul>
+            </nav>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

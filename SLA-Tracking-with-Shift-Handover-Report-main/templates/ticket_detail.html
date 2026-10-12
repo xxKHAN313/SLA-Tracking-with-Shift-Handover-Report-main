@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Ticket {{ ticket.external_id }}{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('tickets.ticket_list') }}" class="btn btn-link px-0 mb-2"><i class="bi bi-arrow-left"></i> Back to tickets</a>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h3 class="mb-0">
+        <code style="color: var(--blue-700);">{{ ticket.external_id }}</code> &mdash; {{ ticket.title }}
+    </h3>
+    <span class="badge bg-{{ sla_badge_color.get(ticket.sla_status, 'secondary') }} badge-sla fs-6">{{ ticket.sla_status or 'N/A' }}</span>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-6">
+        <div class="card p-3">
+            <h6><i class="bi bi-info-circle-fill me-1"></i> Ticket Details</h6>
+            <table class="table table-sm">
+                <tr><th>Source System</th><td>{{ ticket.source_system }}</td></tr>
+                <tr><th>Status</th><td>{{ ticket.status or '-' }}</td></tr>
+                <tr><th>Severity</th><td>{{ severity_display(ticket.severity) }}</td></tr>
+                <tr><th>Priority</th><td>{{ ticket.priority or '-' }}</td></tr>
+                <tr><th>Criticality</th><td>{{ ticket.criticality or '-' }}</td></tr>
+                <tr><th>Assigned To</th><td>{{ ticket.assigned_to or '-' }}</td></tr>
+                <tr><th>Created At (source)</th><td>{{ ticket.created_at_source or '-' }}</td></tr>
+                <tr><th>Closed At (source)</th><td>{{ ticket.closed_at_source or '-' }}</td></tr>
+                <tr><th>Last Synced</th><td>{{ ticket.last_synced_at or '-' }}</td></tr>
+            </table>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card p-3">
+            <h6><i class="bi bi-clock-history me-1"></i> SLA Details</h6>
+            <table class="table table-sm">
+                <tr><th>Matched SLA Rule</th><td>{{ ticket.sla_rule.rule_name if ticket.sla_rule_id and ticket.sla_rule else 'No Matching Rule' }}</td></tr>
+                <tr><th>Response Deadline</th><td>{{ ticket.response_deadline or '-' }}</td></tr>
+                <tr><th>Resolution Deadline</th><td>{{ ticket.resolution_deadline or '-' }}</td></tr>
+                <tr><th>Response SLA Status</th><td>{{ ticket.response_sla_status or '-' }}</td></tr>
+                <tr><th>Resolution SLA Status</th><td>{{ ticket.resolution_sla_status or '-' }}</td></tr>
+                <tr><th>Breach Duration</th><td>{% if ticket.breach_duration_minutes and ticket.breach_duration_minutes > 0 %}<span class="text-danger fw-bold">{{ ticket.breach_duration_minutes }} minutes</span>{% else %}{{ ticket.breach_duration_minutes or 0 }} minutes{% endif %}</td></tr>
+            </table>
+            {% if current_user.has_permission('generate_reports') %}
+            <div class="d-grid gap-2">
+                <form method="POST" action="{{ url_for('tickets.trigger_recalculate') }}" class="d-inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn btn-outline-primary btn-sm w-100"><i class="bi bi-arrow-repeat"></i> Recalculate SLA for all open tickets</button>
+                </form>
+                <form method="POST" action="{{ url_for('tickets.send_mail_directly', ticket_id=ticket.id) }}" class="d-inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn btn-primary btn-sm w-100"><i class="bi bi-envelope"></i> Send Mail Directly</button>
+                </form>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- SLA Breach Root Cause Tagging Card -->
+<div class="card p-3 mt-4 border-start border-4 border-danger shadow-sm">
+    <h6 class="fw-bold"><i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>SLA Breach Root Cause Tagging</h6>
+    <p class="text-muted small mb-3">Categorize the root cause of SLA delay for executive reporting and dashboard analytics.</p>
+    {% if current_user.has_permission('generate_reports') %}
+    <form method="POST" action="{{ url_for('tickets.update_breach_reason', ticket_id=ticket.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="row g-3">
+            <div class="col-md-5">
+                <label class="form-label small fw-bold">Root Cause Category</label>
+                <select name="breach_reason" class="form-select form-select-sm mb-2" id="breachReasonSelect">
+                    <option value="">-- Select Root Cause Category --</option>
+                    <option value="Vendor Delay" {% if ticket.breach_reason == 'Vendor Delay' %}selected{% endif %}>Vendor Delay</option>
+                    <option value="Customer Unresponsive" {% if ticket.breach_reason == 'Customer Unresponsive' %}selected{% endif %}>Customer Unresponsive</option>
+                    <option value="Third-Party Outage" {% if ticket.breach_reason == 'Third-Party Outage' %}selected{% endif %}>Third-Party Outage</option>
+                    <option value="Staff Shortage" {% if ticket.breach_reason == 'Staff Shortage' %}selected{% endif %}>Staff Shortage</option>
+                    <option value="Technical Complexity" {% if ticket.breach_reason == 'Technical Complexity' %}selected{% endif %}>Technical Complexity</option>
+                    <option value="Custom" {% if ticket.breach_reason and ticket.breach_reason not in ['Vendor Delay', 'Customer Unresponsive', 'Third-Party Outage', 'Staff Shortage', 'Technical Complexity'] %}selected{% endif %}>Custom / Type Below...</option>
+                </select>
+                <input type="text" name="custom_breach_reason" id="customBreachReasonInput" class="form-control form-control-sm" placeholder="Or type custom root cause here..." value="{{ ticket.breach_reason if ticket.breach_reason and ticket.breach_reason not in ['Vendor Delay', 'Customer Unresponsive', 'Third-Party Outage', 'Staff Shortage', 'Technical Complexity'] else '' }}">
+            </div>
+            <div class="col-md-7">
+                <label class="form-label small fw-bold">Root Cause Analysis Notes</label>
+                <textarea name="breach_notes" class="form-control form-control-sm" rows="2" placeholder="Describe delay investigation details or justification...">{{ ticket.breach_notes or '' }}</textarea>
+            </div>
+        </div>
+        <div class="mt-3 text-end">
+            <button type="submit" class="btn btn-sm btn-danger px-3"><i class="bi bi-save me-1"></i> Save Root Cause Analysis</button>
+        </div>
+    </form>
+    {% else %}
+    <div class="row g-3">
+        <div class="col-md-5">
+            <label class="form-label small fw-bold">Root Cause Category</label>
+            <div><span class="badge bg-danger fs-6">{{ ticket.breach_reason or 'Not Tagged Yet' }}</span></div>
+        </div>
+        <div class="col-md-7">
+            <label class="form-label small fw-bold">Root Cause Analysis Notes</label>
+            <p class="small text-muted mb-0">{{ ticket.breach_notes or 'No investigation notes provided.' }}</p>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+{% if current_user.has_permission('manage_iris_settings') %}
+<div class="card p-3 mt-4 border-0 shadow-sm">
+    <div class="d-flex justify-content-between align-items-center">
+        <h6 class="mb-0 text-muted small fw-bold"><i class="bi bi-code-slash me-1"></i> Raw Source Payload (Admin Debugging Only)</h6>
+        <button class="btn btn-sm btn-outline-secondary py-0 px-2" type="button" data-bs-toggle="collapse" data-bs-target="#rawPayloadCollapse" aria-expanded="false">
+            <i class="bi bi-eye me-1"></i> View Raw JSON
+        </button>
+    </div>
+    <div class="collapse mt-3" id="rawPayloadCollapse">
+        <pre class="small p-3 rounded bg-dark text-light border border-secondary mb-0" style="max-height: 280px; overflow:auto;">{{ ticket.raw_payload_json or 'No raw payload stored.' }}</pre>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

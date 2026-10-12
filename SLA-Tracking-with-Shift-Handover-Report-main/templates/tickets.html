@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}Tickets{% endblock %}
+
+{% block content %}
+<div class="dashboard-header">
+    <h3><i class="bi bi-ticket-detailed me-2"></i>Incident Tickets</h3>
+    <div class="d-flex gap-2">
+        {% if current_user.has_permission('manage_iris_settings') %}
+        <form method="POST" action="{{ url_for('tickets.trigger_sync') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-primary btn-sm"><i class="bi bi-cloud-download"></i> Sync from IRIS</button>
+        </form>
+        {% endif %}
+        <form method="POST" action="{{ url_for('tickets.trigger_recalculate') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-repeat"></i> Recalculate SLA</button>
+        </form>
+    </div>
+</div>
+
+<div class="card p-3 mb-3">
+    <form method="GET" class="row g-2">
+        <div class="col-md-2">
+            <select name="client_id" class="form-select form-select-sm">
+                <option value="">Client: All</option>
+                {% for c in clients %}
+                <option value="{{ c.id }}" {% if selected_client_id|string == c.id|string %}selected{% endif %}>{{ c.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <input type="text" name="search" class="form-control form-control-sm" placeholder="Search title / external ID"
+                   value="{{ current_filters.get('search', '') }}">
+        </div>
+        <div class="col-md-2">
+            <select name="status" class="form-select form-select-sm">
+                <option value="">Status: All</option>
+                {% for s in filter_options.statuses %}
+                <option value="{{ s }}" {% if current_filters.get('status') == s %}selected{% endif %}>{{ s }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <select name="sla_status" class="form-select form-select-sm">
+                <option value="">SLA Status: All</option>
+                {% for s in filter_options.sla_statuses %}
+                <option value="{{ s }}" {% if current_filters.get('sla_status') == s %}selected{% endif %}>{{ s }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <select name="assigned_to" class="form-select form-select-sm">
+                <option value="">Analyst: All</option>
+                {% for a in filter_options.assignees %}
+                <option value="{{ a }}" {% if current_filters.get('assigned_to') == a %}selected{% endif %}>{{ a }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-1">
+            <input type="date" name="date_from" class="form-control form-control-sm" value="{{ current_filters.get('date_from','') }}">
+        </div>
+        <div class="col-md-1">
+            <input type="date" name="date_to" class="form-control form-control-sm" value="{{ current_filters.get('date_to','') }}">
+        </div>
+        <div class="col-md-1">
+            <button class="btn btn-primary btn-sm w-100" type="submit"><i class="bi bi-funnel-fill"></i> Filter</button>
+        </div>
+    </form>
+</div>
+
+<div class="card p-0">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0 align-middle">
+            <thead>
+                <tr>
+                    <th>External ID</th>
+                    <th>Title</th>
+                    <th>Status</th>
+                    <th>Severity</th>
+                    <th>Priority</th>
+                    <th>Criticality</th>
+                    <th>Assigned To</th>
+                    <th>Created At</th>
+                    <th>SLA Rule</th>
+                    <th>Resolution Deadline</th>
+                    <th>SLA Status</th>
+                    <th>Breach (min)</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for t in tickets %}
+                <tr onclick="window.location='{{ url_for('tickets.ticket_detail', ticket_id=t.id) }}'" style="cursor:pointer;">
+                    <td><code>{{ t.external_id }}</code></td>
+                    <td>{{ t.title }}</td>
+                    <td>{{ t.status or '-' }}</td>
+                    <td>{{ severity_display(t.severity) }}</td>
+                    <td>{{ t.priority or '-' }}</td>
+                    <td>{{ t.criticality or '-' }}</td>
+                    <td>{{ t.assigned_to or '-' }}</td>
+                    <td>{{ t.created_at_source.strftime('%Y-%m-%d %H:%M') if t.created_at_source else '-' }}</td>
+                    <td>{{ t.sla_rule.rule_name if t.sla_rule_id and t.sla_rule else '-' }}</td>
+                    <td>{{ t.resolution_deadline.strftime('%Y-%m-%d %H:%M') if t.resolution_deadline else '-' }}</td>
+                    <td><span class="badge bg-{{ sla_badge_color.get(t.sla_status, 'secondary') }} badge-sla">{{ t.sla_status or 'N/A' }}</span></td>
+                    <td>{% if t.breach_duration_minutes and t.breach_duration_minutes > 0 %}<span class="text-danger fw-bold">{{ t.breach_duration_minutes }}</span>{% else %}{{ t.breach_duration_minutes or 0 }}{% endif %}</td>
+                </tr>
+            {% else %}
+                <tr><td colspan="12" class="text-center text-muted py-4">No tickets found. Try syncing from DFIR-IRIS or seeding dummy data.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% if pagination.pages > 1 %}
+<nav class="mt-3">
+    <ul class="pagination pagination-sm justify-content-center">
+        {% for p in range(1, pagination.pages + 1) %}
+        <li class="page-item {% if p == pagination.page %}active{% endif %}">
+            <a class="page-link" href="{{ url_for('tickets.ticket_list', page=p, **current_filters) }}">{{ p }}</a>
+        </li>
+        {% endfor %}
+    </ul>
+</nav>
+{% endif %}
+{% endblock %}

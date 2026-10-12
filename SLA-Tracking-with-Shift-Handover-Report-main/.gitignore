@@ -1,0 +1,41 @@
+.env
+venv/
+__pycache__/
+*.pyc
+instance/*.db
+!instance/sla_tracker.db
+generated_reports/*.pdf
+generated_reports/*.xlsx
+.DS_Store
+*.egg-info/
+bandit_report.html
+
+# Generated build files
+cmake-build-debug/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+*.obj
+*.o
+*.exe
+*.dll
+a.out
+
+# Local user and booking data
+bookings.txt
+Login_emp.txt
+login_std.txt
+orders.txt
+cart.txt
+complains.txt
+notifications.txt
+stocks.dat
+
+# Local logs and databases
+*.log
+*.db
+*.sqlite
+*.sqlite3
+
+# Downloaded utilities
+cloudflared.exe

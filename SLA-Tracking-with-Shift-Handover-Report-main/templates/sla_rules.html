@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}SLA Rules{% endblock %}
+
+{% block content %}
+<div class="dashboard-header">
+    <h3><i class="bi bi-clock-history me-2"></i>SLA Rules</h3>
+    <div class="d-flex gap-2 align-items-center">
+        <form method="GET" class="d-flex gap-2 align-items-center">
+            <select name="client_id" class="form-select form-select-sm" style="width:auto;" onchange="this.form.submit()">
+                <option value="">All Clients</option>
+                {% for c in clients %}
+                <option value="{{ c.id }}" {% if selected_client_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+                {% endfor %}
+            </select>
+        </form>
+        <a href="{{ url_for('sla_rules.rule_create') }}" class="btn btn-primary btn-sm">
+            <i class="bi bi-plus-circle"></i> Add SLA Rule
+        </a>
+    </div>
+</div>
+
+<p class="text-muted small">
+    Rules are matched generically: a rule is applied if <strong>all</strong> of its configured conditions match the ticket attributes.
+    Rules are scoped per client and evaluated in priority order (lower = first). First match wins.
+</p>
+
+<div class="card p-0">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0 align-middle">
+            <thead>
+                <tr>
+                    <th>Client</th><th>Priority</th><th>Rule Name</th><th>Matching Conditions</th>
+                    <th>Response (min)</th><th>Resolution (min)</th><th>Warning %</th><th>Biz Hrs</th><th>Active</th><th></th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for rule in rules %}
+                <tr>
+                    <td>{{ rule.client.name if rule.client else '—' }}</td>
+                    <td>{{ rule.priority }}</td>
+                    <td>
+                        <strong>{{ rule.rule_name }}</strong>
+                        {% if rule.description %}<div class="text-muted small mt-1">{{ rule.description }}</div>{% endif %}
+                        {% if rule.escalation_email %}<div class="text-info small mt-1"><i class="bi bi-envelope-fill"></i> <code>{{ rule.escalation_email }}</code></div>{% endif %}
+                        <div class="text-muted mt-1" style="font-size:0.72rem;">{% if rule.created_by %}Created by <code>{{ rule.created_by }}</code>{% endif %}{% if rule.updated_by and rule.updated_by != rule.created_by %} | Updated by <code>{{ rule.updated_by }}</code>{% endif %}</div>
+                    </td>
+                    <td>{% for cond in rule.conditions %}<span class="badge bg-light text-dark border mb-1"><code>{{ cond.field_name }}</code> = <code>{{ cond.field_value }}</code></span>{% if not loop.last %}<br>{% endif %}{% else %}<span class="text-muted small">— None —</span>{% endfor %}</td>
+                    <td>{{ rule.response_sla_minutes or '-' }}</td>
+                    <td>{{ rule.resolution_sla_minutes }}</td>
+                    <td>{{ rule.warning_threshold_percent }}%</td>
+                    <td>{{ '✓' if rule.business_hours_only else '—' }}</td>
+                    <td>{% if rule.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}</td>
+                    <td class="text-end">
+                        <a href="{{ url_for('sla_rules.rule_edit', rule_id=rule.id) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil"></i></a>
+                        <form method="POST" action="{{ url_for('sla_rules.rule_toggle', rule_id=rule.id) }}" class="d-inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-warning"><i class="bi bi-toggle2-on"></i></button></form>
+                        <form method="POST" action="{{ url_for('sla_rules.rule_delete', rule_id=rule.id) }}" class="d-inline" onsubmit="return confirm('Delete this SLA rule?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button></form>
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td colspan="11" class="text-center text-muted py-4">No SLA rules configured yet.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
